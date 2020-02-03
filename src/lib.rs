@@ -37,22 +37,23 @@ pub struct BPB {
 // total size: 36 bytes
 
 /* For FAT32 -- differs for FAT12 and FAT16 */
-struct EBP {
-    sectors_per_fat: [u8; 4],
-    flags: [u8; 2],
-    fat_version: [u8; 2],
-    root_cluster: [u8; 4],
-    fsinfo_sector: [u8; 2],
-    backup_boot_sector: [u8; 2],
-    reserved: [u8; 12], // should be zero when formatted
-    drive_number: u8, // 0x00 for floppy, 0x80 for hard disk
-    nt_flags: u8,
-    signature: u8, // 0x28 or 0x29
-    volume_id: [u8; 4],
-    volume_label: [u8; 11], // zero-padded string
-    system_id: [u8; 8], // should be "FAT32   "
-    boot_code: [u8; 420],
-    bootable_part_signature: [u8; 2] // 0xaa55: indicates bootable
+pub struct EBP {
+    pub sectors_per_fat: u32,
+    pub flags: u16,
+    pub fat_version_major: u8,
+    pub fat_version_minor: u8,
+    pub root_cluster: u32,
+    pub fsinfo_sector: u16,
+    pub backup_boot_sector: u16,
+    pub reserved: [u8; 12], // should be zero when formatted
+    pub drive_number: u8, // 0x00 for floppy, 0x80 for hard disk
+    pub nt_flags: u8,
+    pub signature: u8, // 0x28 or 0x29
+    pub volume_id: u32,
+    pub volume_label: [u8; 11], // zero-padded string
+    pub system_id: [u8; 8], // should be "FAT32   "
+    pub boot_code: [u8; 420],
+    pub bootable_part_signature: u16 // 0xaa55: indicates bootable
 }
 // total size: 476 bytes
 
@@ -102,3 +103,43 @@ pub fn unpack_bpb(raw: [u8; 36]) -> BPB {
 
     bpb
 }
+
+fn unpack_u32_le(raw: &[u8]) -> u32 {
+    u32::from_le((raw[0] as u32) << 24 |
+                 (raw[1] as u32) << 16 |
+                 (raw[2] as u32) << 8 |
+                 raw[3] as u32)
+}
+
+fn unpack_u16_le(raw: &[u8]) -> u16 {
+    u16::from_le((raw[0] as u16) << 8 |
+                 raw[1] as u16)
+}
+
+pub fn unpack_ebp(raw: [u8; 476]) -> EBP {
+    let mut ebp = EBP {
+        sectors_per_fat: unpack_u32_le(&raw[0..4]),
+        flags: unpack_u16_le(&raw[4..6]),
+        fat_version_major: raw[6],
+        fat_version_minor: raw[7],
+        root_cluster: unpack_u32_le(&raw[8..12]),
+        fsinfo_sector: unpack_u16_le(&raw[12..14]),
+        backup_boot_sector: unpack_u16_le(&raw[14..16]),
+        reserved: [0; 12],
+        drive_number: raw[28],
+        nt_flags: raw[29],
+        signature: raw[30],
+        volume_id: unpack_u32_le(&raw[31..35]),
+        volume_label: [0; 11], // 35..46
+        system_id: [0; 8], // 46..54
+        boot_code: [0; 420], // 54..474
+        bootable_part_signature: unpack_u16_le(&raw[474..476])
+    };
+
+    ebp.volume_label.copy_from_slice(&raw[35..46]);
+    ebp.system_id.copy_from_slice(&raw[46..54]);
+    ebp.boot_code.copy_from_slice(&raw[54..474]);
+
+    ebp
+}
+
